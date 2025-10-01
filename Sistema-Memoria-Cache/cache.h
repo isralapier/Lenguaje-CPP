@@ -1,199 +1,249 @@
 #include <iostream>
-#include <string>
+#include <fstream>
 #include <map>
-#include <fstream>    
-#include <sstream> 
+#include <utility>
+#include <string>
+#include <sstream>
 #include <climits>
 #include <vector>
 #include <algorithm>
-#include <vector>
-#include <algorithm>
+
 
 using namespace std;
 
+//clase cache
+//-----------------------------------------------------------------------------
 template <class T>
-class CacheManager {
+class CacheManager{
 
-    private:
-        int mru = 0;
-        int maxSize; // Tamanio maximo del cache
-        map <string, pair<T, int>> cacheData; // Mapa para almacenar los elementos en cache
-        bool write_file(string, T); // Indica si se escribio el archivo en memoria (y lo hace?) --> Lo hago al final
-        void removeLRU();
-        string fileName; // TODO: Ver que hago con esto, si lo llamo parametro o si lo hardcodeo
-        bool isObjectInFile(string key, string fileName); 
-        T getObjectInFile(string key, string fileName);   
-    public:
+//privado
+int capacity; // capacidad cache
+map <string,pair <T,int > > cacheData; // clave, <Objeto,indice de uso>
+int mru = 0; //mru cache, contador global
+int maxSize;
+string fileName; // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+bool write_file(string,T ); //check file en la cache
+bool objectFile(string key,string fileName); 
+T  getObjectFile(string key,string fileName);
+void remove();
 
-    CacheManager(int, string);
-    ~CacheManager();  
 
-    void insert (string key, T obj);
-    T get (string key);
-    void show_cache(); // Mostrar contenido del cache
+//metodos publicos
+public:
+
+CacheManager(int capacity,string fileName); // recibe la capacidad en el int
+~ CacheManager ();
+
+void insert(string key, T objeto);
+T get(string key);
+void show_cache(); //muestra cache
 };
 
+//metodos cache
+//-----------------------------------------------------------------------------------------------
+
+//constructor
 template <class T>
-CacheManager<T>::CacheManager(int maxSize, string fileName) {
-    this->maxSize = maxSize;
-    this->fileName = fileName;
+CacheManager<T> :: CacheManager(int capacity ,string fileName){
+
+this -> capacity = capacity;
+this -> fileName = fileName;
+this -> maxSize = capacity; //  inicializar maxSize!!!!!!!!!!!!!!!!!!
+
 }
 
-template <class T>
-CacheManager<T>::~CacheManager() {
-    // Destructor para liberar recursos si es necesario
-}
 
-template <class T>
-bool CacheManager<T>::write_file(string key, T obj) {
-    ofstream file(fileName, ios::app); // Abrir en modo append
-    if (!file.is_open()) {
-        return false; // No se pudo abrir el archivo
-    }
-    
-    file << key << ":" << obj << endl;
+//destructor
+template<class T>
+CacheManager<T> :: ~CacheManager() { //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+}
+//-------------------------------------------------------------------------
+//metodo write_file     - carga un objeto T en file
+template<class T>
+bool CacheManager<T> :: write_file(string key,T obj){
+
+ofstream file(fileName, ios::app); // modo append agrega datos al final del archivo
+
+if(!file.is_open()){
+
+    return false; //el archivo no se abrio correctamente
+
+}else{
+
+    file << key<< ":" << obj << endl;          //meto en archivo
     file.close();
-    return true; // Se escribio correctamente
+    return true; // el archivo se escribio correctamente
+
 }
 
-template <class T>
-bool CacheManager<T>::isObjectInFile(string key, string fileName){
-    ifstream file(fileName);
+}
+//-------------------------------------------------------------------------
+//metodo objectFile  -  verifica si el objeto en file
+template <class T>    
+bool CacheManager<T>:: objectFile(string key,string fileName){
 
-    if(!file.is_open()) throw runtime_error ("No se pudo abrir el archivo");
+   ifstream file(fileName);
 
-    string linea;
-    while(getline(file,linea)){
-        // Busco la linea que arranque con la misma clave
-        if(linea.find(key + ":") == 0){ // Porque lo primero que hay en la linea es la clave
+   if(!file.is_open()) throw runtime_error ("Error al abrir archivo");  //excepcion 
+
+   string linea;
+
+   while(getline(file,linea)){ //guarda una linea de file en "linea"
+
+        if(linea.find(key + ":") == 0){ //busco la clave
+
             file.close();
             return true;
-        } 
-    }
-    file.close();
+
+        }
+
+   }
+
+   file.close();
     return false;
+
 }
 
-template <class T>
-T CacheManager<T>::getObjectInFile(string key, string fileName){
+//-----------------------------------------------------------------------------
+//metodo getObjectFile   -   toma un objeto desde file y lo devuelve
+template <class T>                 
+T CacheManager<T>:: getObjectFile(string key, string fileName){//!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
     ifstream file(fileName);
 
-    if(!file.is_open()) throw runtime_error ("No se pudo abrir el archivo");
+    if(!file.is_open()) throw runtime_error ("Error al abrir el archivo"); //excepcion
 
     string linea;
 
-    while(getline(file,linea)){
-         if (linea.find(key + ":") == 0) {
-            string valueStr = linea.substr(key.length() + 1);
+    while(getline(file,linea)){           
 
-            T obj;
-            stringstream ss(valueStr);
-            ss >> obj; 
-            
+        if(linea.find(key + ":") == 0){
+            string dato = linea.substr(key.length() + 1);
+
+            T objeto;
+            stringstream datos(dato);
+
+            datos >> objeto;
+
             file.close();
-            return obj;
-         }
-    }
-    file.close();
-    throw runtime_error("Key '" + key + "' no encontrada en el disco");
-}
+            return objeto;
 
-template <class T>
-void CacheManager<T>::removeLRU(){
-    if (cacheData.empty()) return; // Proteccion si el cache esta vacio.
-    string lruKey; // Variable para almacenar la clave del LRU
-    int lruValue = INT_MAX; // Inicializar con el valor máximo posible
-        
-        // Buscar el elemento con el menor valor MRU (mas antiguo)
-        for (auto it = cacheData.begin(); it != cacheData.end(); ++it) {
-            if (it->second.second < lruValue) {
-                lruValue = it->second.second; // Actualiza el valor LRU mas pequenio
-                lruKey = it->first; // Guarda la clave correspondiente
-            }
+
         }
-        
-        // Elimina el elemento menos recientemente usado (LRU)
-        cacheData.erase(lruKey); // Elimina el elemento LRU del cache usando su clave
+
+
+    }
+
+file.close();
+throw runtime_error ("No se encontro la clave");
+
+
+
+}
+//----------------------------------------------------------------------------
+//metodo remove     -    elimina el objeto de la cache menos usado, por RLU 
+template <class T>
+void CacheManager<T> :: remove(){
+
+    if(cacheData.empty()) return; //verifica si esta vacio
+    string lru;
+    int lruValue = INT_MAX;
+
+    for (auto cache = cacheData.begin(); cache != cacheData.end(); ++cache ){ // it iterador de map
+
+        if(cache -> second.second < lruValue){ //segundo elemento de map - lru value
+
+           lruValue = cache -> second.second;  //reemplazo lru value
+           lru = cache-> first;                //primer elemento de map - reemplazo key
+
+        }
+
+
+
+    }
+
+        cacheData.erase(lru); //elimina el elemento de map - cacheData
+
 }
 
+//---------------------------------------------------------------------
+//metodo insert     -    inserta un objeto en la cache - map 
 template <class T>
-void CacheManager<T>::insert(string key, T obj) {
- // Si existe un elemento con la misma clave, se actualiza su valor (objeto)
-  for(auto it =  cacheData.begin();it != cacheData.end(); it++){
-    if(it->first == key) {
-    write_file(key, obj); // Actualiza el archivo
-    it->second.first = obj; // Actualiza el objeto en cache
+void CacheManager<T>:: insert(string key, T objeto){
+
+   auto it = cacheData.find(key); 
+
+   if(it != cacheData.end()){ // Si el elemento ya está en la caché
+
+    write_file(key,objeto); //actualiza archivo
+    it->second.first =  objeto; //actualiza  objeto en map - cacheData
+    it->second.second = mru++; // actualiza mru, y se lo asigna a la ultima modificacion en cache
+
+    return;
+
+   }
+
+
+   if(cacheData.size() >= maxSize){ // verifica cache llena
+    remove();                //elimina objeto de  cache
+
+   }
+
+
+    cacheData[key] = make_pair(objeto,mru++); //INserta el nuevo objeto con la clave y valor
+    write_file(key,objeto);
+
+}
+
+//----------------------------------------------------------------------------------------
+//metodo get         - toma un elemento de la cache y lo devuelve - varios casos
+template <class T>
+T CacheManager<T> :: get(string key){
+    
+//busca en cache
+auto it = cacheData.find(key);
+if (it != cacheData.end()) {
     it->second.second = mru++;
-    return; // Sale de la funcion
-    }
-}
-    // Si no existe, se inserta un nuevo elemento en cache y en el archivo
-    if(cacheData.size() >= maxSize) {
-        this->removeLRU();
-    }
-    // Inserta el nuevo elemento en cache y en el archivo
-    cacheData[key] = make_pair(obj, mru++); // Inserta el nuevo elemento con su clave y valor
-    write_file(key, obj);
-}   
-
-
-template <class T>
-T CacheManager<T>::get(string key) {
- 
-// Si el elemento existe en cache, se retorna el valor y actualiza el MRU
- 
-for (auto it = cacheData.begin(); it != cacheData.end(); it++){
-    if (it->first == key){
-        it->second.second = mru++;
-        return it->second.first;
-    }
+    return it->second.first;
 }
 
- // Si existe en disco pero no en cache, lo traigo a disco y lo muestro
-
-
-if(isObjectInFile(key,fileName)){
-    if(cacheData.size() >= maxSize){
-        this->removeLRU();
+// Si no está en la caché, buscar en el archivo
+if (objectFile(key, fileName)) {
+    if (cacheData.size() >= maxSize) {
+        remove();
     }
-    T obj = getObjectInFile(key,fileName);
-    cacheData[key] = make_pair(obj, mru++);
-    return obj;
+    T objeto = getObjectFile(key, fileName);
+    cacheData[key] = make_pair(objeto, mru++);
+    return objeto;
 }
 
- // Si no pasa ninguna de las dos tiro error
-throw runtime_error("Clave '" + key + "' no encontrada en cache ni en disco");
+
+// no esta ni en cache ni en file
+throw runtime_error("No se encontro elemento");
+
 }
+
+
+//--------------------------------------------------------------------------
+//metodo show cache    -  muestra los objetos de la cache 
+
 
 template <class T>
 void CacheManager<T>::show_cache() {
-    cout << "=== CONTENIDO CACHE ===" << endl;
-    cout << "Tamanio cache: " << cacheData.size() << "/" << maxSize << endl;
-    
+    cout << "---------CONTENIDO CACHE ---------" << endl;
+    cout << "Tamano cache: " << cacheData.size() << "/" << maxSize << endl;
+
     if (cacheData.empty()) {
         cout << "La cache esta vacia" << endl;
     } else {
-        cout << "Elementos (filtrados por MRU):" << endl;
-        
-        // Crear vector de pares para ordenar por MRU
-        vector<pair<string, pair<T, int>>> sortedElements;
-        for (auto it = cacheData.begin(); it != cacheData.end(); ++it) {
-            sortedElements.push_back(*it);
-        }
-        
-        // Ordenar por MRU descendente (más reciente primero)
-        // El MRU mas grande es el mas recientemente usado
-        sort(sortedElements.begin(), sortedElements.end(), 
-             [](const pair<string, pair<T, int>>& a, const pair<string, pair<T, int>>& b) {
-                 return a.second.second > b.second.second;
-             });
-        
-        // Mostrar elementos ordenados
-        for (const auto& element : sortedElements) {
-            cout << "  Key: \"" << element.first 
-                 << "\" | Valor: " << element.second.first 
-                 << " | MRU: " << element.second.second << endl;
+        cout << "Elementos (ordenados por clave):" << endl;
+
+        for (const auto& elemento : cacheData) {
+            cout << "  Key: \"" << elemento.first
+                 << "\" | Valor: " << elemento.second.first
+                 << " | MRU: " << elemento.second.second << endl;
         }
     }
-    cout << "======================" << endl;
+    cout << "---------------" << endl;
 }
