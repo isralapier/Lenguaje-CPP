@@ -1,113 +1,101 @@
 #include <iostream>
+#include <fstream>
 #include <string>
-#include "cache.h"
+#include <sstream>
+#include "trabajo-cache.h" 
 
 using namespace std;
 
-class Canciones {
-    private:
-        int id; // Identificador único de la canción
-        string nombre;
-        string artista;
-    
-    public:
-        // Constructor por defecto
-        Canciones() : id(0), nombre(""), artista("") {}
-        
-        // Constructor con parámetros
-        Canciones(int _id, string _nombre, string _artista) 
-            : id(_id), nombre(_nombre), artista(_artista) {}
-        
-        // Getters
-        int getId() const { return id; }
-        string getNombre() const { return nombre; }
-        string getArtista() const { return artista; }
-        
+class Student {
+    int id;
+    int value;
+    string data; 
 
-        void print() const {
-            cout << "Cancion{ID: " << id << ", Nombre: " << nombre 
-                 << ", Artista: " << artista << "}";
+public:
+    static const string class_name;
+
+    Student() = default; //Constructor por defecto, para map
+
+    Student(int _key, int _value, const string& _data) : id(_key), value(_value), data(_data){}
+
+    void print() {
+        cout << "Student Object: " << id << ", " << value << ", " << data << endl;
+    }
+    friend ostream& operator<<(ostream& os, const Student& student) {//sobrecarga de << para escribir en archivo
+        os << student.id << "," << student.value << "," << student.data;
+        return os;
+    }
+
+
+    friend istream& operator>>(istream& is, Student& student) {//sobrecarga de >> para leer del archivo
+        char comma;
+        string line;
+        if (getline(is, line)) {
+            stringstream ss(line);
+            if (ss >> student.id >> comma >> student.value >> comma) {
+                ss >> student.data;
+            }
         }
-        
-        // Operador << para escribir a archivo y mostrar
-        friend ostream& operator<<(ostream& os, const Canciones& c) {
-            os << c.id << "," << c.nombre << "," << c.artista;
-            return os;
-        }
-        
-        // Operador >> para leer desde archivo
-        friend istream& operator>>(istream& is, Canciones& c) {
-            char comma;
-            is >> c.id >> comma;
-            getline(is, c.nombre, ',');
-            getline(is, c.artista);
-            return is;
-        }
+        return is;
+    }
 };
 
+const string Student::class_name = "StudentClass";
 
 int main() {
-    cout << "=== PRUEBAS DEL CACHE MANAGER ===" << endl;
+
+    CacheManager<Student> my_cache(3, "disco.txt");
     
-    // Crear cache con capacidad de 3 elementos
-    // El file que se crea como disco es el segundo parametro (se crea automaticamante el txt)
-    CacheManager<Canciones> cache_canciones(3, "canciones_cache.txt");
-    
-    cout << "\n1. Cache inicial (vacio):" << endl;
-    cache_canciones.show_cache();
-    
-    // Insertar canciones
-    cout << "\n2. Insertando canciones..." << endl;
-    cache_canciones.insert("cancion1", Canciones(1, "Bohemian_Rhapsody", "Queen"));
-    cache_canciones.insert("cancion2", Canciones(2, "Hotel_California", "Eagles"));
-    cache_canciones.insert("cancion3", Canciones(3, "Imagine", "John_Lennon"));
-    
-    cache_canciones.show_cache();
-    
-    // Insertar cuarta canción (debería eliminar LRU)
-    cout << "\n3. Insertando cuarta cancion (cache lleno - elimina LRU):" << endl;
-    cache_canciones.insert("cancion4", Canciones(4, "Stairway_to_Heaven", "Led_Zeppelin"));
-    
-    cache_canciones.show_cache();
-    
-    // Acceder a una canción existente (actualiza MRU)
-    // Lo hice en bloques try/catch pq throwee los errores en el cache manager como runtime exceptions
-    cout << "\n4. Accediendo a 'cancion2' (actualiza MRU):" << endl;
+    cout << "--- Prueba completa de CacheManager ---" << endl;
+
+    // Prueba insercion  
+    cout << "\nLlenando la cache (capacidad 3)..." << endl;
+    my_cache.insert("0", Student(0, 22, "student1"));
+    my_cache.insert("1", Student(1, 23, "student2"));
+    my_cache.insert("2", Student(2, 25, "student3"));
+    my_cache.show_cache();
+
+    //Prueba el metodo get y actualiza el MRU
+    cout << "\nAccediendo a '0' para que sea el mas reciente..." << endl;
     try {
-        Canciones cancion = cache_canciones.get("cancion2");
-        cout << "Cancion encontrada: ";
-        cancion.print();
-        cout << endl;
-    } catch (const exception& e) {
-        cout << "Error: " << e.what() << endl;
+        Student retrieved = my_cache.get("0");
+        cout << "Elemento '0' recuperado: ";
+        retrieved.print();
+    } catch (const runtime_error& e) {
+        cout << e.what() << endl;
     }
-    
-    cache_canciones.show_cache();
-    
-    // Actualizar una canción existente
-    cout << "\n5. Actualizando 'cancion3' con nueva informacion:" << endl;
-    cache_canciones.insert("cancion3", Canciones(3, "Imagine_Remastered", "John_Lennon"));
-    
-    cache_canciones.show_cache();
-    
-    // Intentar acceder a una canción que no existe
-    cout << "\n6. Intentando acceder a cancion inexistente:" << endl;
-    
+    my_cache.show_cache();
+
+    // Prueba insercion cuando la cache esta llena 
+    cout << "\nInsertando '3' (elimina '1' por ser el menos reciente)..." << endl;
+    my_cache.insert("3", Student(3, 29, "student4"));
+    my_cache.show_cache();
+
+    // Prueba get de un elemento que esta en el archivo pero no en la cache
+    cout << "\nAccediendo a '1' (deberia ser recuperado del archivo)..." << endl;
     try {
-        Canciones cancion = cache_canciones.get("cancion_inexistente");
-        cancion.print();
-    } catch (const exception& e) {
+        Student retrievedFromFile = my_cache.get("1");
+        cout << "Elemento '1' recuperado del archivo: ";
+        retrievedFromFile.print();
+    } catch (const runtime_error& e) {
+        cout << e.what() << endl;
+    }
+    my_cache.show_cache();
+
+    // Pruba get de un elemento que no existe 
+    cout << "\nIntentando acceder a '99' (no existe)..." << endl;
+    try {
+        my_cache.get("99");
+    } catch (const runtime_error& e) {
         cout << "Error esperado: " << e.what() << endl;
     }
+
+    // Prueba actualizar un elemento existente en la cache 
+    cout << "\nActualizando '0' con nuevos datos..." << endl;
+    my_cache.insert("0", Student(0, 50, "student5"));
+    my_cache.show_cache();
     
-    // Llenar el cache y probar más eliminaciones LRU
-    cout << "\n7. Insertando mas canciones para probar LRU:" << endl;
-    cache_canciones.insert("cancion5", Canciones(5, "Sweet_Child_O_Mine", "Guns_N_Roses"));
-    cache_canciones.insert("cancion6", Canciones(6, "Purple_Haze", "Jimi_Hendrix"));
-    
-    cache_canciones.show_cache();
-    
-    cout << "\n=== PRUEBAS COMPLETADAS ===" << endl;
-    
+    cout << "\n--- Fin de la prueba ---" << endl;
+
     return 0;
 }
